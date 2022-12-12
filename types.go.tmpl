@@ -2,33 +2,70 @@
 
 {{- $typeMap := .TypeMap -}}
 
+use core::future::Future;
+use core::pin::Pin;
+use std::collections::HashMap;
+
 //
 // Types
 //
+
+#[derive(Debug)]
+pub enum WebRPCError {
+  Reqwest(reqwest::Error),
+  Serde(serde_json::Error),
+}
+
+impl From<serde_json::Error> for WebRPCError {
+  fn from(err: serde_json::Error) -> Self {
+    Self::Serde(err)
+  }
+}
+
+impl From<reqwest::Error> for WebRPCError {
+  fn from(err: reqwest::Error) -> Self {
+    Self::Reqwest(err)
+  }
+}
 
 {{- if .Messages -}}
 {{range .Messages -}}
 
 {{if .Type | isEnumType -}}
 {{$enumName := .Name}}
-export enum {{$enumName}} {
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub enum {{$enumName}} {
 {{- range $i, $field := .Fields}}
   {{- if $i}},{{end}}
-  {{$field.Name}} = '{{$field.Name}}'
+  #[serde(rename = "{{$field.Name}}")]
+  {{pascalCase $field.Name}}
 {{- end}}
 }
 {{end -}}
 
 {{- if .Type | isStructType  }}
-export interface {{.Name}} {
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct {{.Name}} {
   {{- range .Fields}}
   {{- $isExportable := true -}}
+  {{- $notRenamedYet := true -}}
   {{- range $meta := .Meta -}} 
       {{- if eq (get $meta "json") "-" -}}
         {{- $isExportable = false}}
       {{- end -}}
   {{- end }}
-  {{if $isExportable -}}{{template "fieldName" dict "Field" .}}{{if .Optional}}?{{end}}: {{template "type" dict "Type" .Type "TypeMap" $typeMap}}{{- end -}}
+  {{if $isExportable -}}
+    {{- range $meta := .Meta -}} 
+      {{- if exists $meta "json" -}}
+    #[serde(rename = "{{- get $meta "json" | split "," | first -}}")]
+        {{- $notRenamedYet = false -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if $notRenamedYet -}}
+    #[serde(rename = "{{.Name}}")]
+    {{- end}}
+  {{snakeCase .Name}}: {{if .Optional}}Option<{{end}}{{template "type" dict "Type" .Type "TypeMap" $typeMap}}{{if .Optional}}>{{- end -}},
+  {{- end}}
   {{- end}}
 }
 {{end -}}
@@ -37,22 +74,21 @@ export interface {{.Name}} {
 
 {{if .Services}}
 {{- range .Services}}
-export interface {{.Name}} {
-{{- range $_, $method := .Methods}}
-  {{firstLetterToLower .Name}}({{template "methodInputs" dict "Method" . "TypeMap" $typeMap}}): Promise<{{$method.Name}}Return>
-{{- end}}
-}
 
 {{range .Methods -}}
-export interface {{.Name}}Args {
+#[derive(Debug, serde::Serialize)]
+pub struct {{.Name}}Args {
 {{- range .Inputs}}
-  {{.Name}}{{if .Optional}}?{{end}}: {{template "type" dict "Type" .Type "TypeMap" $typeMap}}
+  #[serde(rename = "{{.Name}}")]
+  pub {{snakeCase .Name}}: {{if .Optional}}Option<{{end}}{{template "type" dict "Type" .Type "TypeMap" $typeMap}}{{if .Optional}}>{{end}},
 {{- end}}
 }
 
-export interface {{.Name}}Return {
+#[derive(Debug, serde::Deserialize)]
+pub struct {{.Name}}Return {
 {{- range .Outputs}}
-  {{.Name}}{{if .Optional}}?{{end}}: {{template "type" dict "Type" .Type "TypeMap" $typeMap}}
+  #[serde(rename = "{{.Name}}")]
+  pub {{snakeCase .Name}}{{if .Optional}}?{{end}}: {{template "type" dict "Type" .Type "TypeMap" $typeMap}},
 {{- end}}  
 }
 {{end}}

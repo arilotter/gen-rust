@@ -8,39 +8,37 @@
 //
 
 {{- range .Services}}
-export class {{.Name}} implements {{.Name}} {
-  protected hostname: string
-  protected fetch: Fetch
-  protected path = '/rpc/{{.Name}}/'
+pub struct {{.Name}} {
+  hostname: String,
+  path: String
+}
 
-  constructor(hostname: string, fetch: Fetch) {
-    this.hostname = hostname
-    this.fetch = (input: RequestInfo, init?: RequestInit) => fetch(input, init)
+impl {{.Name}} {
+  pub fn new(hostname: String) -> {{.Name}} {
+    {{.Name}} {
+      hostname,
+      path: "/rpc/{{.Name}}/".to_string()
+    }
   }
+}
 
-  private url(name: string): string {
-    return this.hostname + this.path + name
-  }
-  {{range $_, $method := .Methods}}
-  {{firstLetterToLower .Name}} = ({{template "methodInputs" dict "Method" . "TypeMap" $typeMap}}): Promise<{{$method.Name}}Return> => {
-    return this.fetch(
-      this.url('{{.Name}}'),
-      {{- if .Inputs | len}}
-      createHTTPRequest(args, headers)
-      {{- else}}
-      createHTTPRequest({}, headers)
-      {{end -}}
-    ).then((res) => {
-      return buildResponse(res).then(_data => {
-        return {
-        {{- range $i, $output := .Outputs -}}{{if gt $i 0}}, {{end}}
-          {{$output.Name}}: <{{template "type" dict "Type" $output.Type "TypeMap" $typeMap}}>(_data.{{$output.Name}})
-        {{- end}}
-        }
-      })
+impl {{.Name}} {
+  {{- range $_, $method := .Methods}}
+  pub fn {{snakeCase .Name}} (&self, {{if gt (len .Inputs) 0}}args: {{.Name}}Args{{end}}) -> Pin<Box<dyn Future<Output = Result<{{$method.Name}}Return, WebRPCError>> + '_>> {
+    Box::pin(async move {
+      let url = format!("{}{}{{.Name}}", self.hostname, self.path);
+      reqwest::Client::new()
+        .post(&url)
+      {{- if gt (len .Inputs) 0}}
+        .json(&args)
+      {{- end}}
+        .send()
+        .await.map_err(WebRPCError::from)?
+        .json()
+        .await.map_err(WebRPCError::from)
     })
   }
-  {{end}}
+  {{- end}}
 }
 {{end -}}
 {{end -}}

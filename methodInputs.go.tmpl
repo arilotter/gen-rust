@@ -1,7 +1,0 @@
-{{- define "methodInputs" -}}
-
-{{- $method := .Method -}}
-{{- $typeMap := .TypeMap -}}
-
-{{if gt (len $method.Inputs) 0}}args: {{$method.Name}}Args, {{end}}headers?: object
-{{- end -}}

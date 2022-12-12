@@ -1,6 +1,6 @@
 webrpc = v1
 
-name = node-ts
+name = rust
 version = v1.0.0
 
 
